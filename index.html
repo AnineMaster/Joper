@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exclusive Video Player</title>
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; }
+    body {
+      margin: 0; min-height: 100dvh; background: #07090f; color: #f8fafc;
+      display: flex; align-items: center; justify-content: center; padding: 12px;
+    }
+    .panel {
+      width: 100%; max-width: 940px; background: #111625; border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px; padding: 16px; box-shadow: 0 25px 60px rgba(0,0,0,0.65);
+    }
+    .header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .brand { font-weight: 800; font-size: 1.1rem; color: #38bdf8; margin-right: auto; }
+    .tabs { display: flex; gap: 8px; }
+    .tab-btn {
+      padding: 8px 14px; border-radius: 8px; border: 1px solid #334155;
+      background: #0b101d; color: #94a3b8; cursor: pointer; font-weight: 600; font-size: 0.85rem;
+    }
+    .tab-btn.active { background: #0284c7; color: #fff; border-color: #38bdf8; }
+    .inputs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+    input {
+      padding: 10px 12px; border-radius: 8px; border: 1px solid #334155;
+      background: #090d16; color: #fff; font-size: 0.88rem; outline: none;
+    }
+    input:focus { border-color: #38bdf8; }
+    .grow { flex: 1; min-width: 210px; }
+    .btn {
+      padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer;
+      background: linear-gradient(135deg, #0284c7, #6366f1); color: #fff; font-weight: 700;
+    }
+    .local-drop {
+      width: 100%; border: 2px dashed #334155; border-radius: 10px; padding: 16px;
+      text-align: center; cursor: pointer; color: #cbd5e1; font-size: 0.9rem; background: #0b101d;
+    }
+    .local-drop.drag { border-color: #38bdf8; background: rgba(56,189,248,0.08); }
+    .player-box {
+      position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000;
+      border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+    }
+    video { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+    .overlay-click { position: absolute; inset: 0; z-index: 2; }
+    .watermark {
+      position: absolute; z-index: 3; pointer-events: none;
+      color: rgba(255,255,255,0.22); font-size: 0.85rem; font-weight: 700; transition: top 2s linear, left 2s linear;
+    }
+    .controls {
+      position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+      background: linear-gradient(transparent, rgba(0,0,0,0.9));
+      padding: 28px 14px 12px; display: flex; flex-direction: column; gap: 8px;
+      opacity: 0; transition: opacity 0.25s;
+    }
+    .player-box:hover .controls, .controls.visible { opacity: 1; }
+    .seek { width: 100%; accent-color: #38bdf8; cursor: pointer; }
+    .ctrl-row { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; }
+    .ctrl-btn { background: none; border: none; color: #fff; font-size: 1.15rem; cursor: pointer; }
+    .vol { width: 75px; accent-color: #38bdf8; cursor: pointer; }
+    select { background: #1e293b; color: #fff; border: 1px solid #334155; border-radius: 6px; padding: 3px 6px; }
+    .spacer { flex: 1; }
+    .msg { margin-top: 10px; font-size: 0.85rem; color: #94a3b8; }
+    .err { color: #f87171; font-weight: 600; }
+    .ok { color: #4ade80; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body oncontextmenu="return false;">
+  <div class="panel">
+    <div class="header">
+      <div class="brand">🛡️ Exclusive Video Player</div>
+      <div class="tabs">
+        <button class="tab-btn active" id="tabOnline">🌐 Online Stream</button>
+        <button class="tab-btn" id="tabLocal">📱 Device File</button>
+      </div>
+    </div>
+
+    <div class="inputs" id="keyRow">
+      <input type="password" id="keyInput" value="MY-PRIVATE-PLAYER-KEY-2026" placeholder="Secret Key" class="grow" />
+    </div>
+
+    <div class="inputs" id="onlineBox">
+      <input type="text" id="workerInput" placeholder="Worker URL (optional agar _worker.js uploaded hai)" class="grow" />
+      <input type="text" id="urlInput" placeholder="https://archive.org/details/... ya /download/...mp4" class="grow" />
+      <button class="btn" id="playStreamBtn">▶ Stream Online</button>
+    </div>
+
+    <div class="inputs hidden" id="localBox">
+      <div class="local-drop" id="localDrop">📂 Phone/PC mein saved locked .mp4 file yahan select karein</div>
+      <input type="file" id="fileInput" hidden />
+    </div>
+
+    <div class="player-box" id="playerBox">
+      <video id="video" playsinline controlsList="nodownload noplaybackrate" disablePictureInPicture></video>
+      <div class="overlay-click" id="overlayClick"></div>
+      <div class="watermark" id="watermark">EXCLUSIVE PLAYER • PROTECTED</div>
+      <div class="controls" id="controls">
+        <input type="range" class="seek" id="seekBar" value="0" min="0" max="100" step="0.1" />
+        <div class="ctrl-row">
+          <button class="ctrl-btn" id="playBtn">▶️</button>
+          <span id="timeText">00:00 / 00:00</span>
+          <div class="spacer"></div>
+          <button class="ctrl-btn" id="muteBtn">🔊</button>
+          <input type="range" class="vol" id="volBar" min="0" max="1" step="0.05" value="1" />
+          <select id="speedSel">
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+            <option value="2">2x</option>
+          </select>
+          <button class="ctrl-btn" id="fsBtn">⛶</button>
+        </div>
+      </div>
+    </div>
+    <div class="msg" id="msg">Ready. Online stream karein ya device par saved locked video chalayein.</div>
+  </div>
+
+  <script>
+    const tabOnline = document.getElementById('tabOnline');
+    const tabLocal = document.getElementById('tabLocal');
+    const onlineBox = document.getElementById('onlineBox');
+    const localBox = document.getElementById('localBox');
+    const keyInput = document.getElementById('keyInput');
+    const workerInput = document.getElementById('workerInput');
+    const urlInput = document.getElementById('urlInput');
+    const playStreamBtn = document.getElementById('playStreamBtn');
+    const localDrop = document.getElementById('localDrop');
+    const fileInput = document.getElementById('fileInput');
+    const video = document.getElementById('video');
+    const controls = document.getElementById('controls');
+    const playBtn = document.getElementById('playBtn');
+    const seekBar = document.getElementById('seekBar');
+    const timeText = document.getElementById('timeText');
+    const volBar = document.getElementById('volBar');
+    const speedSel = document.getElementById('speedSel');
+    const msg = document.getElementById('msg');
+    const watermark = document.getElementById('watermark');
+    const playerBox = document.getElementById('playerBox');
+
+    workerInput.value = localStorage.getItem('svid_cf_worker') || '';
+
+    tabOnline.onclick = () => {
+      tabOnline.classList.add('active'); tabLocal.classList.remove('active');
+      onlineBox.classList.remove('hidden'); localBox.classList.add('hidden');
+    };
+    tabLocal.onclick = () => {
+      tabLocal.classList.add('active'); tabOnline.classList.remove('active');
+      localBox.classList.remove('hidden'); onlineBox.classList.add('hidden');
+    };
+
+    setInterval(() => {
+      watermark.style.top = (10 + Math.random() * 65) + '%';
+      watermark.style.left = (8 + Math.random() * 55) + '%';
+    }, 3500);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'F12' || ((e.ctrlKey || e.metaKey) && ['s','u','S','U'].includes(e.key))) e.preventDefault();
+      if (!video.src) return;
+      if (e.code === 'Space' || e.key === 'k') { e.preventDefault(); togglePlay(); }
+      if (e.code === 'ArrowRight') video.currentTime += 5;
+      if (e.code === 'ArrowLeft') video.currentTime -= 5;
+      if (e.key === 'f' || e.key === 'F') toggleFs();
+      if (e.key === 'm' || e.key === 'M') toggleMute();
+    });
+
+    async function getActiveSW() {
+      if (!('serviceWorker' in navigator)) {
+        throw new Error('Service Worker sirf HTTPS par chalta hai.');
+      }
+      try {
+        const reg = await navigator.serviceWorker.register('./sw.js');
+        await navigator.serviceWorker.ready;
+        if (!navigator.serviceWorker.controller) {
+          await new Promise((resolve) => {
+            navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+            setTimeout(resolve, 1000);
+          });
+        }
+        return navigator.serviceWorker.controller || reg.active;
+      } catch (e) {
+        if (String(e.message).includes('MIME')) {
+          throw new Error('sw.js file server par missing hai (ya sw.js.txt save ho gayi hai)! Exact "sw.js" naam se upload karein.');
+        }
+        throw e;
+      }
+    }
+
+    function sendSWMessage(sw, payload) {
+      return new Promise((resolve) => {
+        const mc = new MessageChannel();
+        mc.port1.onmessage = (e) => resolve(e.data);
+        sw.postMessage(payload, [mc.port2]);
+      });
+    }
+
+    function setMsg(text, type = '') {
+      msg.textContent = text;
+      msg.className = 'msg ' + type;
+    }
+
+    function makeProxyUrl(workerBase, target) {
+      if (workerBase.endsWith('/proxy')) return `${workerBase}?url=${encodeURIComponent(target)}`;
+      return `${workerBase}/?url=${encodeURIComponent(target)}`;
+    }
+
+    async function startOnlineStream() {
+      let rawUrl = urlInput.value.trim();
+      const key = keyInput.value;
+      let worker = workerInput.value.trim().replace(/\/+$/, '');
+      if (worker) localStorage.setItem('svid_cf_worker', worker);
+      else worker = window.location.origin + '/proxy'; // Built-in _worker.js fallback
+
+      if (!rawUrl || !key) return setMsg('Video URL aur Secret Key dono daalein!', 'err');
+
+      try {
+        // Agar archive.org/details/ID paste kiya gaya ho toh asli .mp4 file auto-find karein
+        if (rawUrl.includes('archive.org/details/')) {
+          const m = rawUrl.match(/archive\.org\/details\/([^/?#]+)/);
+          if (m) {
+            setMsg('🔍 Archive.org se locked video file dhoondh raha hoon...');
+            const metaRes = await fetch(makeProxyUrl(worker, `https://archive.org/metadata/${m[1]}`));
+            if (!metaRes.ok) throw new Error('Archive metadata nahi mila — Worker/_worker.js check karein.');
+            const metaJson = await metaRes.json();
+            const files = metaJson.files || [];
+            const targetFile =
+              files.find(f => f.name && f.name.endsWith('_locked.mp4')) ||
+              files.find(f => f.source === 'original' && f.name && f.name.toLowerCase().endsWith('.mp4'));
+            if (!targetFile) return setMsg('❌ Is Archive item mein koi locked .mp4 file nahi mili!', 'err');
+            const encodedPath = targetFile.name.split('/').map(encodeURIComponent).join('/');
+            rawUrl = `https://archive.org/download/${m[1]}/${encodedPath}`;
+          }
+        }
+
+        let finalUrl = rawUrl;
+        if (rawUrl.startsWith('https://archive.org/')) {
+          finalUrl = makeProxyUrl(worker, rawUrl);
+        }
+
+        setMsg('🔄 Connecting & verifying stream...');
+        const sw = await getActiveSW();
+        const streamId = 'on_' + Date.now();
+        const res = await sendSWMessage(sw, { type: 'REGISTER_URL', id: streamId, url: finalUrl, key });
+        if (!res.ok) return setMsg('❌ ' + res.error, 'err');
+
+        video.src = './svid-stream/' + streamId;
+        controls.classList.add('visible');
+        await video.play();
+        setMsg(`✅ Online Streaming (${(res.origSize / 1048576).toFixed(1)} MB) — Bina download play ho raha hai!`, 'ok');
+      } catch (err) {
+        setMsg('❌ ' + err.message, 'err');
+      }
+    }
+
+    async function startLocalFile(file) {
+      const key = keyInput.value;
+      if (!file || !key) return setMsg('File aur Secret Key dono zaroori hain!', 'err');
+      try {
+        setMsg('🔓 Opening saved file from device...');
+        const sw = await getActiveSW();
+        const streamId = 'loc_' + Date.now();
+        const res = await sendSWMessage(sw, { type: 'REGISTER_LOCAL', id: streamId, file, key });
+        if (!res.ok) return setMsg('❌ ' + res.error, 'err');
+
+        video.src = './svid-stream/' + streamId;
+        controls.classList.add('visible');
+        await video.play();
+        setMsg(`✅ Playing "${file.name}" (${(res.origSize / 1048576).toFixed(1)} MB)`, 'ok');
+      } catch (err) {
+        setMsg('❌ ' + err.message, 'err');
+      }
+    }
+
+    playStreamBtn.onclick = startOnlineStream;
+    localDrop.onclick = () => fileInput.click();
+    localDrop.ondragover = (e) => { e.preventDefault(); localDrop.classList.add('drag'); };
+    localDrop.ondragleave = () => localDrop.classList.remove('drag');
+    localDrop.ondrop = (e) => { e.preventDefault(); localDrop.classList.remove('drag'); if (e.dataTransfer.files[0]) startLocalFile(e.dataTransfer.files[0]); };
+    fileInput.onchange = () => { if (fileInput.files[0]) startLocalFile(fileInput.files[0]); };
+
+    const togglePlay = () => video.src && (video.paused ? video.play() : video.pause());
+    const toggleMute = () => { video.muted = !video.muted; document.getElementById('muteBtn').textContent = video.muted ? '🔇' : '🔊'; };
+    const toggleFs = () => document.fullscreenElement ? document.exitFullscreen() : playerBox.requestFullscreen();
+
+    document.getElementById('overlayClick').onclick = togglePlay;
+    playBtn.onclick = togglePlay;
+    document.getElementById('muteBtn').onclick = toggleMute;
+    document.getElementById('fsBtn').onclick = toggleFs;
+    volBar.oninput = () => { video.volume = volBar.value; video.muted = (volBar.value == 0); };
+    speedSel.onchange = () => { video.playbackRate = parseFloat(speedSel.value); };
+
+    const fmt = (s) => !isFinite(s) ? '00:00' : `${String(Math.floor(s/60)).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+    video.onplay = () => playBtn.textContent = '⏸️';
+    video.onpause = () => playBtn.textContent = '▶️';
+    video.ontimeupdate = () => {
+      if (!video.duration) return;
+      seekBar.value = (video.currentTime / video.duration) * 100;
+      timeText.textContent = `${fmt(video.currentTime)} / ${fmt(video.duration)}`;
+    };
+    seekBar.oninput = () => { if (video.duration) video.currentTime = (seekBar.value / 100) * video.duration; };
+  </script>
+</body>
+</html>
